@@ -17,8 +17,8 @@ project(cubicgen)
 # Add the main.cpp file to the project
 add_library(cubicgen STATIC cubicgen.cpp)
 
-# Add the executable for test_anim
-add_executable(test_anim main.cpp)
+# Add the executable for sample
+add_executable(sample sample.cpp)
 
 # Link the cubicgen library to the test_anim executable
-target_link_libraries(test_anim cubicgen)
+target_link_libraries(sample cubicgen)
