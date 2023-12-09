@@ -10,6 +10,10 @@
 #include <random>
 #include <bitset>
 
+#ifndef VERBOSE_LOGGING
+#define VERBOSE_LOGGING 0
+#endif
+
 /**
  * @brief Represents a 3D vector with x, y, and z coordinates.
  */
@@ -79,9 +83,9 @@ public:
     void print() const {
         std::cout << "cubic print" << std::endl;
         std::cout << "duration: " << duration << " ms" << std::endl;
-        for (int32_t z = 0; z < N; ++z) {
-            for (int32_t y = 0; y < N; ++y) {
-                for (int32_t x = 0; x < N; ++x) {
+        for (size_t z = 0; z < N; ++z) {
+            for (size_t y = 0; y < N; ++y) {
+                for (size_t x = 0; x < N; ++x) {
                     std::cout << static_cast<int32_t>(voxels[x][y][z]) << " ";
                 }
                 std::cout << std::endl;
@@ -134,7 +138,9 @@ public:
         uint32_t frame_count = static_cast<uint32_t>(cubics.size());
         writer.write(reinterpret_cast<const char*>(&frame_count), sizeof(uint32_t));
 
+#if VERBOSE_LOGGING == 1
         std::cout << "Frame size: " << N << "x" << s << std::endl;
+#endif
 
         for (const auto& cube : cubics) {
             uint8_t frame[N][s] = {};
@@ -323,7 +329,10 @@ public:
         size.x *= scale_factor.x;
         size.y *= scale_factor.y;
         size.z *= scale_factor.z;
+
+#if VERBOSE_LOGGING == 1
         std::cout << "scaled " << std::to_string(id) << ", " << debug() << std::endl;
+#endif
         return clone();
     }
 
@@ -337,7 +346,10 @@ public:
         position.x += move_vector.x;
         position.y += move_vector.y;
         position.z += move_vector.z;
+    
+#if VERBOSE_LOGGING == 1
         std::cout << "moved " << std::to_string(id) << ", " << debug() << std::endl;
+#endif
         return clone();
     }
 
@@ -348,7 +360,10 @@ public:
      */
     std::unique_ptr<shape_interface> erase() override {
         erased = true;
+
+#if VERBOSE_LOGGING == 1
         std::cout << "erased " << std::to_string(id) << ", " << debug() << std::endl;
+#endif
         return clone();
     }
 
@@ -359,9 +374,9 @@ public:
      * @return True if the cuboid includes the point, false otherwise.
      */
     bool includes(const vec3& point) const override {
-        return (point.x >= position.x && point.x <= position.x + size.x &&
-                point.y >= position.y && point.y <= position.y + size.y &&
-                point.z >= position.z && point.z <= position.z + size.z);
+        return (point.x >= position.x - size.x / 2 && point.x <= position.x + size.x / 2 &&
+                point.y >= position.y - size.y / 2 && point.y <= position.y + size.y / 2 &&
+                point.z >= position.z - size.z / 2 && point.z <= position.z + size.z / 2);
     }
 
     /**
@@ -456,7 +471,10 @@ public:
         radii.x *= scale_factor.x;
         radii.y *= scale_factor.y;
         radii.z *= scale_factor.z;
+
+#if VERBOSE_LOGGING == 1
         std::cout << "scaled " << std::to_string(id) << ", " << debug() << std::endl;
+#endif
         return clone();
     }
 
@@ -470,7 +488,10 @@ public:
         position.x += move_vector.x;
         position.y += move_vector.y;
         position.z += move_vector.z;
+
+#if VERBOSE_LOGGING == 1
         std::cout << "moved " << std::to_string(id) << ", " << debug() << std::endl;
+#endif
         return clone();
     }
 
@@ -481,7 +502,10 @@ public:
      */
     std::unique_ptr<shape_interface> erase() override {
         erased = true;
+
+#if VERBOSE_LOGGING == 1
         std::cout << "erased " << std::to_string(id) << ", " << debug() << std::endl;
+#endif
         return clone();
     }
 
@@ -512,10 +536,12 @@ public:
         }
 
         const ellipsoid& other_ellipsoid = dynamic_cast<const ellipsoid&>(other);
-        
+    
+#if VERBOSE_LOGGING == 1
         std::cout << "> lerp from " << debug() << std::endl;
         std::cout << "> lerp to " << other_ellipsoid.debug() << std::endl;
         std::cout << "> t: " << t << std::endl;
+#endif
 
         auto result = std::make_unique<ellipsoid>(*this);
         result->set_id(id);
@@ -556,7 +582,7 @@ public:
      * @param shape The shape to add to the keyframe.
      */
     void add_keyframe(int32_t time, std::unique_ptr<shape_interface>&& shape) {
-        std::cout << "keyframe added " << std::to_string(shape->get_id()) << ", " << shape->debug() << ", time: " << std::to_string(time) << std::endl;
+        std::cout << "keyframe added; " << std::to_string(shape->get_id()) << ", " << shape->debug() << ", time: " << std::to_string(time) << std::endl;
         keyframes.push_back({time, std::move(shape)});
     }
 
@@ -567,7 +593,7 @@ public:
      * @param shape The shape to add to the keyframe.
      */
     void add_keyframe(int32_t time, const shape_interface& shape) {
-        std::cout << "keyframe added " << std::to_string(shape.get_id()) << ", " << shape.debug() << ", time: " << std::to_string(time) << std::endl;
+        std::cout << "keyframe added; " << std::to_string(shape.get_id()) << ", " << shape.debug() << ", time: " << std::to_string(time) << std::endl;
         keyframes.push_back({ time, shape.clone() });
     }
 
@@ -584,6 +610,8 @@ public:
     cubic_sequence<N> rasterize(int32_t depth, int32_t resolution, int32_t until) {
         // This function rasterizes the animation into a cubic.
         // Each voxel is represented by a 4-bit integer.
+
+        std::cout << "Rasterizing sequence..." << std::endl;
 
         cubic_sequence<N> result{};
 
@@ -619,6 +647,7 @@ public:
             }
         }
 
+#if VERBOSE_LOGGING == 1
         // Display objects
         std::cout << "Objects:" << std::endl;
         for (const auto& [id, object] : objects) {
@@ -631,10 +660,13 @@ public:
                 std::cout << "shape: " << shape->debug() << std::endl;
             }
         }
+#endif
 
         // Fill the gap between keyframes
         for (int32_t time = 0; time < until; time += resolution) {
+#if VERBOSE_LOGGING == 1
             std::cout << "Rasterizing frame " << time << " ms =================" << std::endl;
+#endif
 
             std::vector<std::unique_ptr<shape_interface>> objects_in_this_frame{};
 
@@ -666,15 +698,21 @@ public:
                 }
             }
 
+#if VERBOSE_LOGGING == 1
             // Display objects_in_this_frame
             for (const auto& shape : objects_in_this_frame) {
                 std::cout << "id: " << shape->get_id() << std::endl;
                 std::cout << "info: " << shape->debug() << std::endl;
             }
+#endif
 
             // Rasterize this frame
             auto c = rasterize_frame<N>(objects_in_this_frame, depth);
             c.set_duration(resolution);
+
+#if VERBOSE_LOGGING == 1
+            c.print();
+#endif
 
             result.append(c);
         }
