@@ -177,9 +177,9 @@ class shape_interface {
 protected:
     bool erased = false; /* Flag indicating if the shape is erased. */
     int64_t id; /* The unique identifier of the shape. */
-    static std::random_device rd; /* Random device used for generating random numbers. */
-    static std::mt19937 gen; /* Random number generator engine. */
-    static std::uniform_int_distribution<int64_t> dis; /* Uniform distribution for generating random numbers. */
+    static inline std::random_device rd; /* Random device used for generating random numbers. */
+    static inline std::mt19937 gen; /* Random number generator engine. */
+    static inline std::uniform_int_distribution<int64_t> dis; /* Uniform distribution for generating random numbers. */
 
 public:
     /**
@@ -279,10 +279,6 @@ protected:
     }
 };
 
-std::random_device shape_interface::rd;
-std::mt19937 shape_interface::gen{ shape_interface::rd() };
-std::uniform_int_distribution<int64_t> shape_interface::dis{};
-
 /**
  * @brief Represents a cuboid shape.
  * 
@@ -292,6 +288,7 @@ std::uniform_int_distribution<int64_t> shape_interface::dis{};
 class cuboid : public shape_interface {
 private:
     vec3 position, size;
+    bool wireframe;
 
 public:
     /**
@@ -300,7 +297,7 @@ public:
      * @param position The position of the cuboid.
      * @param size The size of the cuboid.
      */
-    cuboid(const vec3& position, const vec3& size) : position(position), size(size) {}
+    cuboid(const vec3& position, const vec3& size, bool _wireframe = false) : position(position), size(size), wireframe(_wireframe) {}
 
     /**
      * @brief Construct a new cuboid object
