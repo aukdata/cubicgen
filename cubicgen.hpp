@@ -9,6 +9,7 @@
 #include <cmath>
 #include <random>
 #include <bitset>
+#include <chrono>
 
 #ifndef VERBOSE_LOGGING
 #define VERBOSE_LOGGING 0
@@ -30,7 +31,7 @@ template<size_t N>
 class cubic {
 private:
     std::array<std::array<std::array<uint8_t, N>, N>, N> voxels; // 3D array representing the voxels
-    int32_t duration; // duration in milliseconds
+    std::chrono::milliseconds duration; // duration in milliseconds
 
 public:
     cubic() = default;
@@ -52,7 +53,7 @@ public:
      * 
      * @param _duration The duration in milliseconds.
      */
-    void set_duration(int32_t _duration) {
+    void set_duration(std::chrono::milliseconds _duration) {
         duration = _duration;
     }
 
@@ -73,7 +74,7 @@ public:
      * 
      * @return The duration in milliseconds.
      */
-    int32_t get_duration() const {
+    std::chrono::milliseconds get_duration() const {
         return duration;
     }
 
@@ -82,7 +83,7 @@ public:
      */
     void print() const {
         std::cout << "cubic print" << std::endl;
-        std::cout << "duration: " << duration << " ms" << std::endl;
+        std::cout << "duration: " << duration.count() << " ms" << std::endl;
         for (size_t z = 0; z < N; ++z) {
             for (size_t y = 0; y < N; ++y) {
                 for (size_t x = 0; x < N; ++x) {
@@ -157,7 +158,7 @@ public:
 
             writer.write(reinterpret_cast<const char*>(frame), N * s * sizeof(frame[0][0]));
 
-            const int32_t duration = cube.get_duration();
+            const int32_t duration = cube.get_duration().count();
             writer.write(reinterpret_cast<const char*>(&duration), sizeof(int32_t));
         }
 
@@ -581,9 +582,9 @@ public:
      * @param time The time of the keyframe in milliseconds.
      * @param shape The shape to add to the keyframe.
      */
-    void add_keyframe(int32_t time, std::unique_ptr<shape_interface>&& shape) {
-        std::cout << "keyframe added; " << std::to_string(shape->get_id()) << ", " << shape->debug() << ", time: " << std::to_string(time) << std::endl;
-        keyframes.push_back({time, std::move(shape)});
+    void add_keyframe(std::chrono::milliseconds time, std::unique_ptr<shape_interface>&& shape) {
+        std::cout << "keyframe added; " << std::to_string(shape->get_id()) << ", " << shape->debug() << ", time: " << std::to_string(time.count()) << std::endl;
+        keyframes.push_back({time.count(), std::move(shape)});
     }
 
     /**
@@ -592,9 +593,9 @@ public:
      * @param time The time of the keyframe in milliseconds.
      * @param shape The shape to add to the keyframe.
      */
-    void add_keyframe(int32_t time, const shape_interface& shape) {
-        std::cout << "keyframe added; " << std::to_string(shape.get_id()) << ", " << shape.debug() << ", time: " << std::to_string(time) << std::endl;
-        keyframes.push_back({ time, shape.clone() });
+    void add_keyframe(std::chrono::milliseconds time, const shape_interface& shape) {
+        std::cout << "keyframe added; " << std::to_string(shape.get_id()) << ", " << shape.debug() << ", time: " << std::to_string(time.count()) << std::endl;
+        keyframes.push_back({ time.count(), shape.clone() });
     }
 
     /**
@@ -607,7 +608,7 @@ public:
      * @return The rasterized cubic sequence.
      */
     template<size_t N>
-    cubic_sequence<N> rasterize(int32_t depth, int32_t resolution, int32_t until) {
+    cubic_sequence<N> rasterize(int32_t depth, std::chrono::milliseconds resolution, std::chrono::milliseconds until) {
         // This function rasterizes the animation into a cubic.
         // Each voxel is represented by a 4-bit integer.
 
@@ -663,7 +664,7 @@ public:
 #endif
 
         // Fill the gap between keyframes
-        for (int32_t time = 0; time < until; time += resolution) {
+        for (int32_t time = 0; time < until.count(); time += resolution.count()) {
 #if VERBOSE_LOGGING == 1
             std::cout << "Rasterizing frame " << time << " ms =================" << std::endl;
 #endif
