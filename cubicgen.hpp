@@ -20,6 +20,24 @@
  */
 struct vec3 {
     double x, y, z;  // x, y, z coordinates
+
+    vec3 operator+(const vec3& other) const {
+        return { x + other.x, y + other.y, z + other.z };
+    }
+    vec3 operator+=(const vec3& other) {
+        *this = *this + other;
+        return *this;
+    }
+    vec3 operator-(const vec3& other) const {
+        return { x - other.x, y - other.y, z - other.z };
+    }
+    vec3 operator-=(const vec3& other) {
+        *this = *this - other;
+        return *this;
+    }
+    vec3 operator*(double scalar) const {
+        return { x * scalar, y * scalar, z * scalar };
+    }
 };
 
 /**
@@ -238,6 +256,16 @@ public:
     virtual std::unique_ptr<shape_interface> move(const vec3& move_vector) = 0;
 
     /**
+     * @brief Rotate the shape around its center by a given rotation vector.
+     * 
+     * @param rotation_vector The rotation vector to apply to the shape.
+     * @param pivot The pivot point to rotate around.
+     * @return A unique pointer to the rotated shape.
+     */
+    virtual std::unique_ptr<shape_interface> rotate(const vec3& rotation_vector) = 0;
+    virtual std::unique_ptr<shape_interface> rotate(const vec3& rotation_vector, const vec3& pivot) = 0;
+
+    /**
      * @brief Erase the shape.
      * 
      * @return A unique pointer to the erased shape.
@@ -277,6 +305,50 @@ protected:
     void set_id(int64_t _id) {
         id = _id;
     }
+
+    /**
+     * @brief Apply Eular rotation around the origin to a given point.
+     * 
+     * @param point The point to rotate.
+     * @param rotation The rotation vector that represents Eular angles in radians.
+     * @return The rotated point.
+     */
+    vec3 apply_eular_rotation(const vec3& point, const vec3& rotation) const {
+        using std::cos, std::sin;
+        const vec3& d = point;
+
+        const double phi = rotation.x;
+        const double theta = rotation.y;
+        const double psi = rotation.z;
+
+        return {
+            cos(theta) * cos(psi) * d.x + (sin(phi) * sin(theta) * cos(psi) + cos(phi) * sin(psi)) * d.y + (-cos(phi) * sin(theta) * cos(psi) + sin(phi) * sin(psi)) * d.z,
+            (-cos(theta) * sin(psi)) * d.x + (-sin(phi) * sin(theta) * sin(psi) + cos(phi) * cos(psi)) * d.y + (cos(phi) * sin(theta) * sin(psi) + sin(phi) * cos(psi)) * d.z,
+            sin(theta) * d.x + (-sin(phi) * cos(theta)) * d.y + (cos(phi) * cos(theta)) * d.z
+        };
+    }
+
+    /**
+     * @brief Apply inverted Eular rotation around the origin to a given point.
+     * 
+     * @param point The point to rotate.
+     * @param rotation The rotation vector that represents Eular angles in radians.
+     * @return The rotated point.
+     */
+    vec3 apply_inverted_eular_rotation(const vec3& point, const vec3& rotation) const {
+        using std::cos, std::sin;
+        const vec3& d = point;
+
+        const double phi = rotation.x;
+        const double theta = rotation.y;
+        const double psi = rotation.z;
+
+        return {
+            cos(theta) * cos(psi) * d.x + (-cos(theta) * sin(psi)) * d.y + sin(theta) * d.z,
+            (sin(phi) * sin(theta) * cos(psi) + cos(phi) * sin(psi)) * d.x + (-sin(phi) * sin(theta) * sin(psi) + cos(phi) * cos(psi)) * d.y + (-sin(phi) * cos(theta)) * d.z,
+            (-cos(phi) * sin(theta) * cos(psi) + sin(phi) * sin(psi)) * d.x + (cos(phi) * sin(theta) * sin(psi) + sin(phi) * cos(psi)) * d.y + (cos(phi) * cos(theta)) * d.z
+        };
+    }
 };
 
 /**
@@ -287,8 +359,8 @@ protected:
  */
 class cuboid : public shape_interface {
 private:
-    vec3 position, size;
-    bool wireframe;
+    vec3 position, size, rotation;
+    bool wireframe = false;
 
 public:
     /**
@@ -297,14 +369,16 @@ public:
      * @param position The position of the cuboid.
      * @param size The size of the cuboid.
      */
-    cuboid(const vec3& position, const vec3& size, bool _wireframe = false) : position(position), size(size), wireframe(_wireframe) {}
+    cuboid(const vec3& _position, const vec3& _size, bool _wireframe = false, const vec3& _rotation = {})
+        : position(_position), size(_size), rotation(_rotation), wireframe(_wireframe) {}
 
     /**
      * @brief Construct a new cuboid object
      * 
      * @param other 
      */
-    cuboid(const cuboid& other) : position(other.position), size(other.size) {}
+    cuboid(const cuboid& other)
+        : position(other.position), size(other.size), rotation(other.rotation), wireframe(other.wireframe) {}
 
     /**
      * @brief Create a clone of the cuboid.
@@ -341,9 +415,7 @@ public:
      * @return A unique pointer to the moved cuboid.
      */
     std::unique_ptr<shape_interface> move(const vec3& move_vector) override {
-        position.x += move_vector.x;
-        position.y += move_vector.y;
-        position.z += move_vector.z;
+        position += move_vector;
     
 #if VERBOSE_LOGGING == 1
         std::cout << "moved " << std::to_string(id) << ", " << debug() << std::endl;
@@ -366,15 +438,61 @@ public:
     }
 
     /**
+     * @brief Rotate the cuboid around its center by a given rotation vector.
+     * 
+     * @param rotation_vector The rotation vector that represents Eular angles in radians.
+     * @return A unique pointer to the rotated cuboid.
+     */
+    std::unique_ptr<shape_interface> rotate(const vec3& rotation_vector) override {
+        rotation += rotation_vector;
+
+#if VERBOSE_LOGGING == 1
+        std::cout << "rotated " << std::to_string(id) << ", " << debug() << std::endl;
+#endif
+        return clone();
+    }
+
+    /**
+     * @brief Rotate the cuboid around a given pivot point by a given rotation vector.
+     * 
+     * @param rotation_vector The rotation vector that represents Eular angles in radians.
+     * @param pivot The pivot point to rotate around.
+     * @return A unique pointer to the rotated cuboid.
+     */
+    std::unique_ptr<shape_interface> rotate(const vec3& rotation_vector, const vec3& pivot) override {
+        rotation += rotation_vector;
+        position = apply_eular_rotation(position - pivot, rotation_vector) + pivot;
+
+#if VERBOSE_LOGGING == 1
+        std::cout << "rotated " << std::to_string(id) << ", " << debug() << std::endl;
+#endif
+        return clone();
+    }
+
+    /**
      * @brief Check if the cuboid includes a given point.
      * 
      * @param point The point to check.
      * @return True if the cuboid includes the point, false otherwise.
      */
     bool includes(const vec3& point) const override {
-        return (point.x >= position.x - size.x / 2 && point.x <= position.x + size.x / 2 &&
-                point.y >= position.y - size.y / 2 && point.y <= position.y + size.y / 2 &&
-                point.z >= position.z - size.z / 2 && point.z <= position.z + size.z / 2);
+        // Rotate the point around the center of the cuboid
+        // Note that this->rotation represents Eular angles in radians
+        vec3 rotated_point;
+
+        {
+            const vec3 d = {
+                point.x - position.x,
+                point.y - position.y,
+                point.z - position.z
+            };
+            
+            rotated_point = apply_inverted_eular_rotation(d, rotation);
+        }
+
+        return std::abs(rotated_point.x) <= size.x / 2 &&
+            std::abs(rotated_point.y) <= size.y / 2 &&
+            std::abs(rotated_point.z) <= size.z / 2;
     }
 
     /**
@@ -394,12 +512,9 @@ public:
 
         auto result = std::make_unique<cuboid>(*this);
         result->set_id(id);
-        result->position.x = position.x * (1 - t) + other_cuboid.position.x * t;
-        result->position.y = position.y * (1 - t) + other_cuboid.position.y * t;
-        result->position.z = position.z * (1 - t) + other_cuboid.position.z * t;
-        result->size.x = size.x * (1 - t) + other_cuboid.size.x * t;
-        result->size.y = size.y * (1 - t) + other_cuboid.size.y * t;
-        result->size.z = size.z * (1 - t) + other_cuboid.size.z * t;
+        result->position = position * (1 - t) + other_cuboid.position * t;
+        result->size = size * (1 - t) + other_cuboid.size * t;
+        result->rotation = rotation * (1 - t) + other_cuboid.rotation * t;
         return result;
     }
 
@@ -409,7 +524,9 @@ public:
      * @return The debug string representation of the cuboid.
      */
     std::string debug() const override {
-        return "cuboid, pos: (" + std::to_string(position.x) + ", " + std::to_string(position.y) + ", " + std::to_string(position.z) + "), size: (" + std::to_string(size.x) + ", " + std::to_string(size.y) + ", " + std::to_string(size.z) + ")";
+        return "cuboid, pos: (" + std::to_string(position.x) + ", " + std::to_string(position.y) + ", " + std::to_string(position.z)
+            + "), size: (" + std::to_string(size.x) + ", " + std::to_string(size.y) + ", " + std::to_string(size.z)
+            + "), rot: (" + std::to_string(90 * rotation.x / M_PI_2) + ", " + std::to_string(90 * rotation.y / M_PI_2) + ", " + std::to_string(90 * rotation.z / M_PI_2) + ")";
     }
 };
 
@@ -421,8 +538,7 @@ public:
  */
 class ellipsoid : public shape_interface {
 private:
-    vec3 position;
-    vec3 radii;
+    vec3 position, radii, rotation;
 
 public:
     /**
@@ -431,7 +547,8 @@ public:
      * @param position The position of the ellipsoid.
      * @param radii The radii of the ellipsoid.
      */
-    ellipsoid(const vec3& position, const vec3& radii) : position(position), radii(radii) {}
+    ellipsoid(const vec3& _position, const vec3& _radii, const vec3& _rotation = {})
+        : position(_position), radii(_radii), rotation(_rotation) {}
 
     /**
      * @brief Construct a new ellipsoid object.
@@ -439,14 +556,15 @@ public:
      * @param position The position of the ellipsoid.
      * @param radii The radii of the ellipsoid.
      */
-    ellipsoid(const vec3& position, double radii) : position(position), radii({radii, radii, radii}) {}
+    ellipsoid(const vec3& _position, double _radii, const vec3& _rotation = {})
+        : position(_position), radii({ _radii, _radii, _radii }), rotation(_rotation) {} 
 
     /**
      * @brief Construct a new ellipsoid object.
      * 
      * @param other 
      */
-    ellipsoid(const ellipsoid& other) : position(other.position), radii(other.radii) {}
+    ellipsoid(const ellipsoid& other) : position(other.position), radii(other.radii), rotation(other.rotation) {}
 
     /**
      * @brief Create a clone of the ellipsoid.
@@ -483,12 +601,42 @@ public:
      * @return A unique pointer to the moved ellipsoid.
      */
     std::unique_ptr<shape_interface> move(const vec3& move_vector) override {
-        position.x += move_vector.x;
-        position.y += move_vector.y;
-        position.z += move_vector.z;
+        position += move_vector;
 
 #if VERBOSE_LOGGING == 1
         std::cout << "moved " << std::to_string(id) << ", " << debug() << std::endl;
+#endif
+        return clone();
+    }
+
+    /**
+     * @brief Rotate the ellipsoid around its center by a given rotation vector.
+     * 
+     * @param rotation_vector The rotation vector to apply to the ellipsoid.
+     * @return A unique pointer to the rotated ellipsoid.
+     */
+    std::unique_ptr<shape_interface> rotate(const vec3& rotation_vector) override {
+        rotation += rotation_vector;
+
+#if VERBOSE_LOGGING == 1
+        std::cout << "rotated " << std::to_string(id) << ", " << debug() << std::endl;
+#endif
+        return clone();
+    }
+
+    /**
+     * @brief Rotate the ellipsoid around a given pivot point by a given rotation vector.
+     * 
+     * @param rotation_vector The rotation vector to apply to the ellipsoid.
+     * @param pivot The pivot point to rotate around.
+     * @return A unique pointer to the rotated ellipsoid.
+     */
+    std::unique_ptr<shape_interface> rotate(const vec3& rotation_vector, const vec3& pivot) override {
+        rotation += rotation_vector;
+        position = apply_eular_rotation(position - pivot, rotation_vector) + pivot;
+
+#if VERBOSE_LOGGING == 1
+        std::cout << "rotated " << std::to_string(id) << ", " << debug() << std::endl;
 #endif
         return clone();
     }
@@ -514,9 +662,21 @@ public:
      * @return True if the ellipsoid includes the point, false otherwise.
      */
     bool includes(const vec3& point) const override {
-        double dx = (point.x - position.x) / radii.x;
-        double dy = (point.y - position.y) / radii.y;
-        double dz = (point.z - position.z) / radii.z;
+        vec3 rotated_point;
+
+        if (rotation.x != 0 && rotation.y != 0 && rotation.z != 0)
+        {
+            const vec3 d = point - position;
+            rotated_point = apply_inverted_eular_rotation(d, rotation);
+        }
+        else
+        {
+            rotated_point = point - position;
+        }
+
+        const double dx = rotated_point.x / radii.x;
+        const double dy = rotated_point.y / radii.y;
+        const double dz = rotated_point.z / radii.z;
         return (dx * dx + dy * dy + dz * dz <= 1.0);
     }
 
@@ -542,13 +702,11 @@ public:
 #endif
 
         auto result = std::make_unique<ellipsoid>(*this);
+        
         result->set_id(id);
-        result->position.x = position.x * (1 - t) + other_ellipsoid.position.x * t;
-        result->position.y = position.y * (1 - t) + other_ellipsoid.position.y * t;
-        result->position.z = position.z * (1 - t) + other_ellipsoid.position.z * t;
-        result->radii.x = radii.x * (1 - t) + other_ellipsoid.radii.x * t;
-        result->radii.y = radii.y * (1 - t) + other_ellipsoid.radii.y * t;
-        result->radii.z = radii.z * (1 - t) + other_ellipsoid.radii.z * t;
+        result->position = position * (1 - t) + other_ellipsoid.position * t;
+        result->radii = radii * (1 - t) + other_ellipsoid.radii * t;
+        result->rotation = rotation * (1 - t) + other_ellipsoid.rotation * t;
         return result;
     }
 
@@ -558,7 +716,9 @@ public:
      * @return The debug string representation of the ellipsoid.
      */
     std::string debug() const override {
-        return "ellipsoid, pos: (" + std::to_string(position.x) + ", " + std::to_string(position.y) + ", " + std::to_string(position.z) + "), radii: (" + std::to_string(radii.x) + ", " + std::to_string(radii.y) + ", " + std::to_string(radii.z) + ")";
+        return "ellipsoid, pos: (" + std::to_string(position.x) + ", " + std::to_string(position.y) + ", " + std::to_string(position.z)
+            + "), radii: (" + std::to_string(radii.x) + ", " + std::to_string(radii.y) + ", " + std::to_string(radii.z)
+            + "), rot: (" + std::to_string(90 * rotation.x / M_PI_2) + ", " + std::to_string(90 * rotation.y / M_PI_2) + ", " + std::to_string(90 * rotation.z / M_PI_2) + ")";
     }
 };
 
