@@ -10,6 +10,7 @@
 #include <random>
 #include <bitset>
 #include <chrono>
+#include <tuple>
 
 #ifndef VERBOSE_LOGGING
 #define VERBOSE_LOGGING 0
@@ -37,6 +38,106 @@ struct vec3 {
     }
     vec3 operator*(double scalar) const {
         return { x * scalar, y * scalar, z * scalar };
+    }
+
+    constexpr static vec3 x_axis() {
+        return { 1, 0, 0 };
+    }
+
+    constexpr static vec3 y_axis() {
+        return { 0, 1, 0 };
+    }
+
+    constexpr static vec3 z_axis() {
+        return { 0, 0, 1 };
+    }
+
+    constexpr static vec3 zero() {
+        return { 0, 0, 0 };
+    }
+};
+
+struct quaternion {
+    double w, x, y, z;
+
+    quaternion operator+(const quaternion& other) const {
+        return { w + other.w, x + other.x, y + other.y, z + other.z };
+    }
+
+    quaternion operator*(const quaternion& other) const {
+        const quaternion q = {
+            w * other.w - x * other.x - y * other.y - z * other.z,
+            w * other.x + x * other.w + y * other.z - z * other.y,
+            w * other.y - x * other.z + y * other.w + z * other.x,
+            w * other.z + x * other.y - y * other.x + z * other.w
+        };
+        return q.normalize();
+    }
+
+    vec3 operator*(const vec3& vec) const {
+        return {
+            w * w * vec.x + 2 * y * w * vec.z - 2 * z * w * vec.y + x * x * vec.x + 2 * y * x * vec.y + 2 * z * x * vec.z - z * z * vec.x - y * y * vec.x,
+            2 * x * y * vec.x + y * y * vec.y + 2 * z * y * vec.z + 2 * w * z * vec.x - z * z * vec.y + w * w * vec.y - 2 * x * w * vec.z - x * x * vec.y,
+            2 * x * z * vec.x + 2 * y * z * vec.y + z * z * vec.z - 2 * w * y * vec.x - y * y * vec.z + 2 * w * x * vec.y - x * x * vec.z + w * w * vec.z
+        };
+    }
+
+    quaternion operator*(double scalar) const {
+        return { w * scalar, x * scalar, y * scalar, z * scalar };
+    }
+
+    quaternion operator/(double scalar) const {
+        return { w / scalar, x / scalar, y / scalar, z / scalar };
+    }
+
+    double norm() const {
+        return std::sqrt(w * w + x * x + y * y + z * z);
+    }
+
+    quaternion normalize() const {
+        const double n = norm();
+        return { w / n, x / n, y / n, z / n };
+    }
+
+    quaternion conjugate() const {
+        return { w, -x, -y, -z };
+    }
+
+    quaternion leap(const quaternion& other, double t) const {
+        const double theta = std::acos(w * other.w + x * other.x + y * other.y + z * other.z);
+        return (*this * std::sin((1 - t) * theta) + other * std::sin(t * theta)) / std::sin(theta);
+    }
+
+    static quaternion from_eular_angles(double phi, double theta, double psi) {
+        const double c1 = std::cos(phi / 2);
+        const double c2 = std::cos(theta / 2);
+        const double c3 = std::cos(psi / 2);
+        const double s1 = std::sin(phi / 2);
+        const double s2 = std::sin(theta / 2);
+        const double s3 = std::sin(psi / 2);
+        return {
+            c1 * c2 * c3 + s1 * s2 * s3,
+            s1 * c2 * c3 - c1 * s2 * s3,
+            c1 * s2 * c3 + s1 * c2 * s3,
+            c1 * c2 * s3 - s1 * s2 * c3
+        };
+    }
+
+    std::tuple<double, double, double> to_eular_angles() const {
+        const double phi = std::atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y));
+        const double theta = std::asin(2 * (w * y - z * x));
+        const double psi = std::atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z));
+        return { phi, theta, psi };
+    }
+
+    static quaternion around(const vec3& axis, double angle) {
+        const double c = std::cos(angle / 2);
+        const double s = std::sin(angle / 2);
+        return { c, s * axis.x, s * axis.y, s * axis.z };
+    }
+
+    constexpr static quaternion identity() {
+        return { 1, 0, 0, 0 };
     }
 };
 
@@ -262,8 +363,8 @@ public:
      * @param pivot The pivot point to rotate around.
      * @return A unique pointer to the rotated shape.
      */
-    virtual std::unique_ptr<shape_interface> rotate(const vec3& rotation_vector) = 0;
-    virtual std::unique_ptr<shape_interface> rotate(const vec3& rotation_vector, const vec3& pivot) = 0;
+    virtual std::unique_ptr<shape_interface> rotate(const quaternion& rotation) = 0;
+    virtual std::unique_ptr<shape_interface> rotate(const quaternion& rotation, const vec3& pivot) = 0;
 
     /**
      * @brief Erase the shape.
@@ -305,50 +406,6 @@ protected:
     void set_id(int64_t _id) {
         id = _id;
     }
-
-    /**
-     * @brief Apply Eular rotation around the origin to a given point.
-     * 
-     * @param point The point to rotate.
-     * @param rotation The rotation vector that represents Eular angles in radians.
-     * @return The rotated point.
-     */
-    vec3 apply_eular_rotation(const vec3& point, const vec3& rotation) const {
-        using std::cos, std::sin;
-        const vec3& d = point;
-
-        const double phi = rotation.x;
-        const double theta = rotation.y;
-        const double psi = rotation.z;
-
-        return {
-            cos(theta) * cos(psi) * d.x + (sin(phi) * sin(theta) * cos(psi) + cos(phi) * sin(psi)) * d.y + (-cos(phi) * sin(theta) * cos(psi) + sin(phi) * sin(psi)) * d.z,
-            (-cos(theta) * sin(psi)) * d.x + (-sin(phi) * sin(theta) * sin(psi) + cos(phi) * cos(psi)) * d.y + (cos(phi) * sin(theta) * sin(psi) + sin(phi) * cos(psi)) * d.z,
-            sin(theta) * d.x + (-sin(phi) * cos(theta)) * d.y + (cos(phi) * cos(theta)) * d.z
-        };
-    }
-
-    /**
-     * @brief Apply inverted Eular rotation around the origin to a given point.
-     * 
-     * @param point The point to rotate.
-     * @param rotation The rotation vector that represents Eular angles in radians.
-     * @return The rotated point.
-     */
-    vec3 apply_inverted_eular_rotation(const vec3& point, const vec3& rotation) const {
-        using std::cos, std::sin;
-        const vec3& d = point;
-
-        const double phi = rotation.x;
-        const double theta = rotation.y;
-        const double psi = rotation.z;
-
-        return {
-            cos(theta) * cos(psi) * d.x + (-cos(theta) * sin(psi)) * d.y + sin(theta) * d.z,
-            (sin(phi) * sin(theta) * cos(psi) + cos(phi) * sin(psi)) * d.x + (-sin(phi) * sin(theta) * sin(psi) + cos(phi) * cos(psi)) * d.y + (-sin(phi) * cos(theta)) * d.z,
-            (-cos(phi) * sin(theta) * cos(psi) + sin(phi) * sin(psi)) * d.x + (cos(phi) * sin(theta) * sin(psi) + sin(phi) * cos(psi)) * d.y + (cos(phi) * cos(theta)) * d.z
-        };
-    }
 };
 
 /**
@@ -359,7 +416,8 @@ protected:
  */
 class cuboid : public shape_interface {
 private:
-    vec3 position, size, rotation;
+    vec3 position, size;
+    quaternion rotation;
     bool wireframe = false;
 
 public:
@@ -369,7 +427,7 @@ public:
      * @param position The position of the cuboid.
      * @param size The size of the cuboid.
      */
-    cuboid(const vec3& _position, const vec3& _size, bool _wireframe = false, const vec3& _rotation = {})
+    cuboid(const vec3& _position, const vec3& _size, bool _wireframe = false, const quaternion& _rotation = quaternion::identity())
         : position(_position), size(_size), rotation(_rotation), wireframe(_wireframe) {}
 
     /**
@@ -440,11 +498,11 @@ public:
     /**
      * @brief Rotate the cuboid around its center by a given rotation vector.
      * 
-     * @param rotation_vector The rotation vector that represents Eular angles in radians.
+     * @param rotation The quaternion that represents Eular angles in radians.
      * @return A unique pointer to the rotated cuboid.
      */
-    std::unique_ptr<shape_interface> rotate(const vec3& rotation_vector) override {
-        rotation += rotation_vector;
+    std::unique_ptr<shape_interface> rotate(const quaternion& _rotation) override {
+        rotation = rotation * _rotation;
 
 #if VERBOSE_LOGGING == 1
         std::cout << "rotated " << std::to_string(id) << ", " << debug() << std::endl;
@@ -459,9 +517,11 @@ public:
      * @param pivot The pivot point to rotate around.
      * @return A unique pointer to the rotated cuboid.
      */
-    std::unique_ptr<shape_interface> rotate(const vec3& rotation_vector, const vec3& pivot) override {
-        rotation += rotation_vector;
-        position = apply_eular_rotation(position - pivot, rotation_vector) + pivot;
+    std::unique_ptr<shape_interface> rotate(const quaternion& _rotation, const vec3& pivot) override {
+        // rotation = rotation_vector;
+        // position = apply_eular_rotation(position - pivot, rotation_vector) + pivot;
+        rotation = _rotation * rotation;
+        position = (_rotation * (position - pivot)) + pivot;
 
 #if VERBOSE_LOGGING == 1
         std::cout << "rotated " << std::to_string(id) << ", " << debug() << std::endl;
@@ -477,18 +537,7 @@ public:
      */
     bool includes(const vec3& point) const override {
         // Rotate the point around the center of the cuboid
-        // Note that this->rotation represents Eular angles in radians
-        vec3 rotated_point;
-
-        {
-            const vec3 d = {
-                point.x - position.x,
-                point.y - position.y,
-                point.z - position.z
-            };
-            
-            rotated_point = apply_inverted_eular_rotation(d, rotation);
-        }
+        vec3 rotated_point = rotation.conjugate() * (point - position);
 
         return std::abs(rotated_point.x) <= size.x / 2 &&
             std::abs(rotated_point.y) <= size.y / 2 &&
@@ -514,7 +563,7 @@ public:
         result->set_id(id);
         result->position = position * (1 - t) + other_cuboid.position * t;
         result->size = size * (1 - t) + other_cuboid.size * t;
-        result->rotation = rotation * (1 - t) + other_cuboid.rotation * t;
+        result->rotation = rotation.leap(other_cuboid.rotation, t);
         return result;
     }
 
@@ -524,9 +573,11 @@ public:
      * @return The debug string representation of the cuboid.
      */
     std::string debug() const override {
+        const auto [phi, theta, psi] = rotation.to_eular_angles();
+
         return "cuboid, pos: (" + std::to_string(position.x) + ", " + std::to_string(position.y) + ", " + std::to_string(position.z)
             + "), size: (" + std::to_string(size.x) + ", " + std::to_string(size.y) + ", " + std::to_string(size.z)
-            + "), rot: (" + std::to_string(90 * rotation.x / M_PI_2) + ", " + std::to_string(90 * rotation.y / M_PI_2) + ", " + std::to_string(90 * rotation.z / M_PI_2) + ")";
+            + "), rot: (" + std::to_string(90 * phi / M_PI_2) + ", " + std::to_string(90 * theta / M_PI_2) + ", " + std::to_string(90 * psi / M_PI_2) + ")";
     }
 };
 
@@ -538,7 +589,8 @@ public:
  */
 class ellipsoid : public shape_interface {
 private:
-    vec3 position, radii, rotation;
+    vec3 position, radii;
+    quaternion rotation;
 
 public:
     /**
@@ -547,7 +599,7 @@ public:
      * @param position The position of the ellipsoid.
      * @param radii The radii of the ellipsoid.
      */
-    ellipsoid(const vec3& _position, const vec3& _radii, const vec3& _rotation = {})
+    ellipsoid(const vec3& _position, const vec3& _radii, const quaternion& _rotation = quaternion::identity())
         : position(_position), radii(_radii), rotation(_rotation) {}
 
     /**
@@ -556,7 +608,7 @@ public:
      * @param position The position of the ellipsoid.
      * @param radii The radii of the ellipsoid.
      */
-    ellipsoid(const vec3& _position, double _radii, const vec3& _rotation = {})
+    ellipsoid(const vec3& _position, double _radii, const quaternion& _rotation = quaternion::identity())
         : position(_position), radii({ _radii, _radii, _radii }), rotation(_rotation) {} 
 
     /**
@@ -615,8 +667,8 @@ public:
      * @param rotation_vector The rotation vector to apply to the ellipsoid.
      * @return A unique pointer to the rotated ellipsoid.
      */
-    std::unique_ptr<shape_interface> rotate(const vec3& rotation_vector) override {
-        rotation += rotation_vector;
+    std::unique_ptr<shape_interface> rotate(const quaternion& _rotation) override {
+        rotation = rotation * _rotation;
 
 #if VERBOSE_LOGGING == 1
         std::cout << "rotated " << std::to_string(id) << ", " << debug() << std::endl;
@@ -631,9 +683,9 @@ public:
      * @param pivot The pivot point to rotate around.
      * @return A unique pointer to the rotated ellipsoid.
      */
-    std::unique_ptr<shape_interface> rotate(const vec3& rotation_vector, const vec3& pivot) override {
-        rotation += rotation_vector;
-        position = apply_eular_rotation(position - pivot, rotation_vector) + pivot;
+    std::unique_ptr<shape_interface> rotate(const quaternion& _rotation, const vec3& pivot) override {
+        rotation = rotation * _rotation;
+        position = (_rotation * (position - pivot)) + pivot;
 
 #if VERBOSE_LOGGING == 1
         std::cout << "rotated " << std::to_string(id) << ", " << debug() << std::endl;
@@ -667,7 +719,7 @@ public:
         if (rotation.x != 0 && rotation.y != 0 && rotation.z != 0)
         {
             const vec3 d = point - position;
-            rotated_point = apply_inverted_eular_rotation(d, rotation);
+            rotated_point = rotation.conjugate() * d;
         }
         else
         {
@@ -706,7 +758,7 @@ public:
         result->set_id(id);
         result->position = position * (1 - t) + other_ellipsoid.position * t;
         result->radii = radii * (1 - t) + other_ellipsoid.radii * t;
-        result->rotation = rotation * (1 - t) + other_ellipsoid.rotation * t;
+        result->rotation = rotation.leap(other_ellipsoid.rotation, t);
         return result;
     }
 
@@ -716,9 +768,11 @@ public:
      * @return The debug string representation of the ellipsoid.
      */
     std::string debug() const override {
+        const auto [phi, theta, psi] = rotation.to_eular_angles();
+
         return "ellipsoid, pos: (" + std::to_string(position.x) + ", " + std::to_string(position.y) + ", " + std::to_string(position.z)
             + "), radii: (" + std::to_string(radii.x) + ", " + std::to_string(radii.y) + ", " + std::to_string(radii.z)
-            + "), rot: (" + std::to_string(90 * rotation.x / M_PI_2) + ", " + std::to_string(90 * rotation.y / M_PI_2) + ", " + std::to_string(90 * rotation.z / M_PI_2) + ")";
+            + "), rot: (" + std::to_string(90 * phi / M_PI_2) + ", " + std::to_string(90 * theta / M_PI_2) + ", " + std::to_string(90 * psi / M_PI_2) + ")";
     }
 };
 
