@@ -22,21 +22,21 @@
 struct vec3 {
     double x, y, z;  // x, y, z coordinates
 
-    vec3 operator+(const vec3& other) const {
+    constexpr vec3 operator+(const vec3& other) const {
         return { x + other.x, y + other.y, z + other.z };
     }
-    vec3 operator+=(const vec3& other) {
+    constexpr vec3 operator+=(const vec3& other) {
         *this = *this + other;
         return *this;
     }
-    vec3 operator-(const vec3& other) const {
+    constexpr vec3 operator-(const vec3& other) const {
         return { x - other.x, y - other.y, z - other.z };
     }
-    vec3 operator-=(const vec3& other) {
+    constexpr vec3 operator-=(const vec3& other) {
         *this = *this - other;
         return *this;
     }
-    vec3 operator*(double scalar) const {
+    constexpr vec3 operator*(double scalar) const {
         return { x * scalar, y * scalar, z * scalar };
     }
 
@@ -60,21 +60,22 @@ struct vec3 {
 struct quaternion {
     double w, x, y, z;
 
-    quaternion operator+(const quaternion& other) const {
+    constexpr quaternion operator+(const quaternion& other) const {
         return { w + other.w, x + other.x, y + other.y, z + other.z };
     }
 
-    quaternion operator*(const quaternion& other) const {
+    constexpr quaternion operator*(const quaternion& other) const {
         const quaternion q = {
             w * other.w - x * other.x - y * other.y - z * other.z,
             w * other.x + x * other.w + y * other.z - z * other.y,
             w * other.y - x * other.z + y * other.w + z * other.x,
             w * other.z + x * other.y - y * other.x + z * other.w
         };
+        
         return q.normalize();
     }
 
-    vec3 operator*(const vec3& vec) const {
+    constexpr vec3 operator*(const vec3& vec) const {
         return {
             w * w * vec.x + 2 * y * w * vec.z - 2 * z * w * vec.y + x * x * vec.x + 2 * y * x * vec.y + 2 * z * x * vec.z - z * z * vec.x - y * y * vec.x,
             2 * x * y * vec.x + y * y * vec.y + 2 * z * y * vec.z + 2 * w * z * vec.x - z * z * vec.y + w * w * vec.y - 2 * x * w * vec.z - x * x * vec.y,
@@ -82,33 +83,63 @@ struct quaternion {
         };
     }
 
-    quaternion operator*(double scalar) const {
+    constexpr quaternion operator*(double scalar) const {
         return { w * scalar, x * scalar, y * scalar, z * scalar };
     }
 
-    quaternion operator/(double scalar) const {
+    constexpr quaternion operator/(double scalar) const {
         return { w / scalar, x / scalar, y / scalar, z / scalar };
     }
 
-    double norm() const {
+    /**
+     * @brief Get the norm of the quaternion.
+     * 
+     * @return The norm of the quaternion.
+     */
+    constexpr double norm() const {
         return std::sqrt(w * w + x * x + y * y + z * z);
     }
 
-    quaternion normalize() const {
+    /**
+     * @brief Get the normalized quaternion. This method does not modify its caller.
+     * 
+     * @return The normalized quaternion.
+     */
+    constexpr quaternion normalize() const {
         const double n = norm();
         return { w / n, x / n, y / n, z / n };
     }
 
-    quaternion conjugate() const {
+    /**
+     * @brief Get the conjugate of the quaternion. This method does not modify its caller.
+     * 
+     * @return The conjugate of the quaternion.
+     */
+    constexpr quaternion conjugate() const {
         return { w, -x, -y, -z };
     }
 
-    quaternion leap(const quaternion& other, double t) const {
+    /**
+     * @brief Perform linear interpolation between this quaternion and another quaternion.
+     * 
+     * @param other The other quaternion to interpolate with.
+     * @param t The interpolation parameter.
+     * @return The interpolated quaternion. 
+     */
+    constexpr quaternion leap(const quaternion& other, double t) const {
         const double theta = std::acos(w * other.w + x * other.x + y * other.y + z * other.z);
         return (*this * std::sin((1 - t) * theta) + other * std::sin(t * theta)) / std::sin(theta);
     }
 
-    static quaternion from_eular_angles(double phi, double theta, double psi) {
+    /**
+     * @brief Get the quaternion from Eular angles.
+     * 
+     * @param phi The rotation around the x-axis in radians.
+     * @param theta The rotation around the y-axis in radians.
+     * @param psi The rotation around the z-axis in radians.
+     * @return The quaternion that represents the rotation.
+     */
+    constexpr static quaternion from_eular_angles(double phi, double theta, double psi) {
         const double c1 = std::cos(phi / 2);
         const double c2 = std::cos(theta / 2);
         const double c3 = std::cos(psi / 2);
@@ -123,19 +154,36 @@ struct quaternion {
         };
     }
 
-    std::tuple<double, double, double> to_eular_angles() const {
+    /**
+     * @brief Convert the quaternion to Eular angles.
+     * 
+     * @return The Eular angles in radians.
+     */
+    constexpr std::tuple<double, double, double> to_eular_angles() const {
         const double phi = std::atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y));
         const double theta = std::asin(2 * (w * y - z * x));
         const double psi = std::atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z));
         return { phi, theta, psi };
     }
 
-    static quaternion around(const vec3& axis, double angle) {
+    /**
+     * @brief Get the quaternion that represents rotation around a given axis by a given angle.
+     * 
+     * @param axis axis of rotation
+     * @param angle angle of rotation in radians
+     * @return The quaternion that represents the rotation. 
+     */
+    constexpr static quaternion around(const vec3& axis, double angle) {
         const double c = std::cos(angle / 2);
         const double s = std::sin(angle / 2);
         return { c, s * axis.x, s * axis.y, s * axis.z };
     }
 
+    /**
+     * @brief Get the identity quaternion.
+     * 
+     * @return The identity quaternion.
+     */
     constexpr static quaternion identity() {
         return { 1, 0, 0, 0 };
     }
@@ -234,6 +282,14 @@ public:
      */
     void append(const cubic<N>& _cubic) {
         cubics.push_back(_cubic);
+    }
+
+    /**
+     * @brief Joins another cubic sequence to the end of this sequence. 
+     * @param other The cubic sequence to join.
+     */
+    void joint(const cubic_sequence<N>& other) {
+        cubics.insert(cubics.end(), other.cubics.begin(), other.cubics.end());
     }
 
     /**
